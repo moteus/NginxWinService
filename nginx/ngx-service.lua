@@ -63,7 +63,7 @@ local function nginx_signal(sig)
   local process = uv.spawn({
     file = NGINX_PATH .. "\\" .. NGINX_APP,
     args = {"-s", sig},
-    cwd  = CWD,
+    cwd  = NGINX_PATH,
     env  = env,
   }, function(self, err, code, signal)
     print(sig .. ":", self, err, code, signal)
