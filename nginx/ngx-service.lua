@@ -92,11 +92,13 @@ end
 
 nginx_start()
 
--- rotate timer (check each 10 minuts. rotate onece a day)
-local LAST_ROTATE = date():fmt('%F')
+local ROTATE_MASK = '%F'
 
-uv.timer():start(10 * 60 * 1000, function()
-  local now = date():fmt('%F')
+-- rotate timer (check each 10 minuts. rotate onece a day)
+local LAST_ROTATE = date():fmt(ROTATE_MASK)
+
+uv.timer():start(0, 10 * 60 * 1000, function()
+  local now = date():fmt(ROTATE_MASK)
   if LAST_ROTATE ~= now then
     LAST_ROTATE = now
     nginx_rotate()
