@@ -1,5 +1,6 @@
 local Service = require "LuaService"
 local uv      = require "lluv"
+local winapi  = require "winapi"
 
 local PHP_PATH = Service.PATH .. "\\.."
 
@@ -20,15 +21,14 @@ local PORTS = {
   --- '9010',
 }
 
-local ENV = {
-  PATH = PHP_PATH .. ';' .. os.getenv('PATH'),
-  PHP_FCGI_CHILDREN=0,
-  PHP_FCGI_MAX_REQUESTS=10,
-}
+local ENV = setmetatable({}, {
+  __index = function(self, key) return os.getenv(key) end;
+  __newindex = function(self, key, value) winapi.setenv(key, value) end;
+})
 
-local env = {} for k, v in pairs(ENV) do
-  env[#env+1] = k..'='..v
-end
+ENV.PATH                  = PHP_PATH .. ';' .. ENV.PATH
+ENV.PHP_FCGI_CHILDREN     = 0
+ENV.PHP_FCGI_MAX_REQUESTS = 500
 
 local Processes = {}
 
@@ -39,7 +39,6 @@ local function php_cgi(port)
     file = PHP_PATH .. "\\" .. PHP_APP,
     args = {"-b", "127.0.0.1:" .. port, "-c", PHP_INI},
     cwd  = PHP_PATH,
-    env  = env,
   }, function(self, err, code, signal)
     print(self, err, code, signal)
     if not Service.check_stop(0) then
