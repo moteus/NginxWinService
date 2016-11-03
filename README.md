@@ -11,4 +11,5 @@ Service wrappers for `nginx` and `php-cgi` for Windows
 
 ### php
  * run multiple PHP processes on different ports
+ * run multiple PHP processes on single port
  * restart PHP process
