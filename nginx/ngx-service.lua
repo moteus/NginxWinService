@@ -7,16 +7,54 @@ local uv      = require "lluv"
 local psapi   = require "pdh.psapi"
 local path    = require "path"
 local date    = require "date"
+local LogLib  = require "log"
+
+----------------------------------------------------------------------------------------------
+-- CONFIG BEGIN
+----------------------------------------------------------------------------------------------
+
+local LOG_LEVEL = 'info'
+
+local LOG_FILE  = {
+  log_dir        = "./logs",
+  log_name       = "ngx-service.log",
+  max_size       = 10 * 1024 * 1024,
+  close_file     = false,
+  flush_interval = 1,
+  reuse          = true,
+}
 
 local NGINX_PATH = Service.PATH .. "\\.."
 
 local NGINX_APP  = "nginx.exe"
 
-local CFG = "conf/nginx.conf"
+local NGINX_CFG = "conf/nginx.conf"
 
 local ENV = {
   PATH = NGINX_PATH .. ';' .. os.getenv('PATH'),
 }
+
+----------------------------------------------------------------------------------------------
+-- CONFIG END
+----------------------------------------------------------------------------------------------
+
+local log do
+  local stdout_writer
+  if not Service.RUN_AS_SERVICE then
+    stdout_writer = require 'log.writer.console.color'.new()
+  end
+
+  local writer = require "log.writer.list".new(
+    require 'log.writer.file'.new(LOG_FILE),
+    stdout_writer
+  )
+
+  local formatter = require "log.formatter.mix".new(
+    require "log.formatter.pformat".new()
+  )
+
+  log = require "log".new( LOG_LEVEL or "info", writer, formatter)
+end
 
 local env = {} for k, v in pairs(ENV) do
   env[#env+1] = k..'='..v
@@ -37,8 +75,8 @@ local function kill_childs(root_pid)
 end
 
 local function nginx_start(cfg)
-  cfg = cfg or CFG
-  print("Start nginx with config:" .. cfg)
+  cfg = cfg or NGINX_CFG
+  log.info("Start nginx with config: %s", cfg)
   local process, pid
   process, pid = uv.spawn({
     file = NGINX_PATH .. "\\" .. NGINX_APP,
@@ -46,9 +84,17 @@ local function nginx_start(cfg)
     cwd  = NGINX_PATH,
     env  = env,
   }, function(self, err, code, signal)
+
+    log.info('process: %d stopped with code: %d sig: %d', pid, code, signal)
+
+    if code ~= 0 then
+      log.warning('unexpected terminate process: %d code: %d sig: %d', pid, code, signal)
+    end
+
     kill_childs(pid)
+
     if not Service.check_stop(0) then
-      print('restarting ...')
+      log.info('restarting nginx main process')
       uv.timer():start(5000, function()
         nginx_start(port)
       end)
@@ -60,13 +106,14 @@ local function nginx_start(cfg)
 end
 
 local function nginx_signal(sig)
+  log.info('send nginx signal: %s', sig)
   local process = uv.spawn({
     file = NGINX_PATH .. "\\" .. NGINX_APP,
     args = {"-s", sig},
     cwd  = NGINX_PATH,
     env  = env,
   }, function(self, err, code, signal)
-    print(sig .. ":", self, err, code, signal)
+    log.info('nginx signal: %s code: %d signal: %d', sig, code, signal)
     Processes[self] = nil
   end)
 
@@ -81,7 +128,7 @@ local function rename_log(P)
   local p, b = path.split(P)
   local new = path.join(p, path.splitext(b) .. '.' .. date():fmt('%F_%H%M%S') .. '.log')
   local ok, err = path.rename(P, new)
-  print(string.format("rename `%s` to `%s` : %s", P, new, ok and 'ok' or tostring(err)))
+  log.info("rename `%s` to `%s` : %s", P, new, ok and 'ok' or tostring(err))
 end
 
 local function nginx_rotate()
@@ -106,7 +153,7 @@ uv.timer():start(0, 10 * 60 * 1000, function()
 end):unref()
 
 local function StopService()
-  print('stopping...')
+  log.info('stopping...')
 
   Service.stop()
 
@@ -127,11 +174,11 @@ local function StopService()
 end
 
 if not Service.RUN_AS_SERVICE then
-  print('reg signals')
+  log.info('run as application')
   uv.signal():start(uv.SIGINT,   StopService):unref()
   uv.signal():start(uv.SIGBREAK, StopService):unref()
 else
-  print('start service')
+  log.info('run as service')
   uv.timer():start(10000, 10000, function(self)
     if Service.check_stop(0) then
       self:close()
