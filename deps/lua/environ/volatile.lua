@@ -1,0 +1,15 @@
+local utils = require "environ.utils"
+
+local env
+
+if utils.IS_WINDOWS then
+
+env = require "environ.win32.system".make_module('volatile')
+
+end
+
+if not env then error('unsupported system') end
+
+require "environ".volatile = env
+
+return env

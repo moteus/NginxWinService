@@ -1,6 +1,6 @@
 local Service = require "LuaService"
 local uv      = require "lluv"
-local winapi  = require "winapi"
+local env     = require "environ.process"
 local ut      = require "lluv.utils"
 local LogLib  = require "log"
 
@@ -18,6 +18,10 @@ local LOG_FILE  = {
   flush_interval = 1,
   reuse          = true,
 }
+
+-- Allows Log stderr to logfle.
+-- Works only for USE_SINGLE_PORT = false
+local PHP_LOG_STDERR = false
 
 local PHP_PATH  = Service.PATH .. "\\.."
 
@@ -42,6 +46,19 @@ local PORTS = {
   '127.0.0.1:9004',
 }
 
+local PHP_ENV = {
+  PATH=PHP_PATH..";%PATH%";
+
+  -- List of ipv4 addresses of FastCGI clients which are allowed to connect
+  FCGI_WEB_SERVER_ADDRS="127.0.0.1";
+
+  -- number of PHP children to spawn
+  PHP_FCGI_CHILDREN="0";
+
+  -- number of request before php-process will be restarted
+  PHP_FCGI_MAX_REQUESTS="10";
+}
+
 ----------------------------------------------------------------------------------------------
 -- CONFIG END
 ----------------------------------------------------------------------------------------------
@@ -49,7 +66,7 @@ local PORTS = {
 local log do
   local stdout_writer
   if not Service.RUN_AS_SERVICE then
-    stdout_writer = require 'log.writer.console.color'.new()
+    stdout_writer = require 'log.writer.stdout'.new()
   end
 
   local writer = require "log.writer.list".new(
@@ -64,20 +81,41 @@ local log do
   log = require "log".new( LOG_LEVEL or "info", writer, formatter)
 end
 
-local ENV = setmetatable({}, {
-  __index = function(self, key) return os.getenv(key) end;
-  __newindex = function(self, key, value) winapi.setenv(key, value) end;
-})
+for k, v in pairs(PHP_ENV) do env.setenv(k, v, true) end
 
--- winapi has bug which leads to AV when try set too long env variable
--- ENV.PATH                  = PHP_PATH .. ';' .. ENV.PATH
-ENV.PHP_FCGI_CHILDREN     = 0
-ENV.PHP_FCGI_MAX_REQUESTS = 500
+local function P(read, write, pipe)
+  local ioflags = 0
+  if read  then ioflags = ioflags + uv.READABLE_PIPE end
+  if write then ioflags = ioflags + uv.WRITABLE_PIPE end
+  if ioflags ~= 0 then
+    if not pipe then
+      pipe = uv.pipe()
+      ioflags = ioflags + uv.CREATE_PIPE
+    else
+      ioflags = ioflags + uv.INHERIT_STREAM
+    end
+  end
+
+  return {
+    stream = pipe,
+    flags  = ioflags + uv.PROCESS_DETACHED
+  }
+end
 
 local Processes = {}
 
+local stderrs = {}
 local function php_cgi_port(port)
+  if Service.check_stop(0) then return end
+
   log.info("starting php_cgi on port: %s ...", port)
+
+  local stderr, stderr_started
+  if PHP_LOG_STDERR then
+    stderr = stderrs[port]
+    stderr_started = not not stderr
+    if not stderr then stderr = P(false, true) end
+  end
 
   local process, pid
 
@@ -85,6 +123,7 @@ local function php_cgi_port(port)
     file = PHP_PATH .. "\\" .. PHP_APP,
     args = {"-b", port, "-c", PHP_INI},
     cwd  = PHP_PATH,
+    stdio = {-1, -1, stderr or -1},
   }, function(self, err, code, signal)
     log.info('process: %d stopped with code: %d sig: %d', pid, code, signal)
 
@@ -104,9 +143,23 @@ local function php_cgi_port(port)
     log.info("started php_cgi on port: %s pid: %d", port, pid)
     Processes[process] = true
   end
+
+  if stderr and not stderr_started then
+    log.info("starting read stderr for %s", port)
+    stderr.stream:start_read(function(self, err, data)
+      if err and err:name() == 'EOF' then
+        return
+      end
+      if err then log.error('PHP::STDERR %s', tostring(err)) end
+      if data then log.info('PHP::STDERR %s', data) end
+    end)
+    stderr.stream:unref()
+  end
 end
 
 local function php_cgi_sock(s)
+  if Service.check_stop(0) then return end
+
   log.info("starting php_cgi on file: %s ...", tostring(s))
 
   local process, pid
