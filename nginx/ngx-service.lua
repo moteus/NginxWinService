@@ -75,6 +75,8 @@ local function kill_childs(root_pid)
 end
 
 local function nginx_start(cfg)
+  if Service.check_stop(0) then return end
+
   cfg = cfg or NGINX_CFG
   log.info("Start nginx with config: %s", cfg)
   local process, pid
