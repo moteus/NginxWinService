@@ -56,7 +56,7 @@ local PHP_ENV = {
   PHP_FCGI_CHILDREN="0";
 
   -- number of request before php-process will be restarted
-  PHP_FCGI_MAX_REQUESTS="10";
+  PHP_FCGI_MAX_REQUESTS="500";
 }
 
 ----------------------------------------------------------------------------------------------
@@ -115,6 +115,7 @@ local function php_cgi_port(port)
     stderr = stderrs[port]
     stderr_started = not not stderr
     if not stderr then stderr = P(false, true) end
+    stderrs[port] = stderr
   end
 
   local process, pid
