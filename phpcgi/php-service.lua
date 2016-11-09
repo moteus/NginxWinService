@@ -126,18 +126,22 @@ local function php_cgi_port(port)
     cwd  = PHP_PATH,
     stdio = {-1, -1, stderr or -1},
   }, function(self, err, code, signal)
-    log.info('process: %d stopped with code: %d sig: %d', pid, code, signal)
+    Processes[self] = nil
+
+    if err then
+      log.error("can not run php-cgi process: %s", tostring(err))
+    else
+      log.info('process: %d stopped with code: %d sig: %d', pid, code, signal)
+    end
 
     if code ~= 0 then
       log.warning('unexpected terminate process: %d code: %d sig: %d', pid, code, signal)
     end
 
-    if not Service.check_stop(0) then
-      log.info('restarting php_cgi process')
-      uv.defer(php_cgi_port, port)
-    end
+    if Service.check_stop(0) then return end
 
-    Processes[self] = nil
+    log.info('restarting php_cgi process')
+    uv.defer(php_cgi_port, port)
   end)
 
   if process then
@@ -170,19 +174,25 @@ local function php_cgi_sock(s)
     cwd  = PHP_PATH,
     stdio = {s, -1, -1},
   }, function(self, err, code, signal)
-    log.info('process: %d stopped with code: %d sig: %d', pid, code, signal)
+    Processes[self] = nil
+
+    if err then
+      log.error("can not run php-cgi process: %s", tostring(err))
+    else
+      log.info('process: %d stopped with code: %d sig: %d', pid, code, signal)
+    end
 
     if code ~= 0 then
       log.warning('unexpected terminate process: %d code: %d sig: %d', pid, code, signal)
     end
 
-    if not Service.check_stop(0) then
-      log.info('restarting php_cgi process')
-      uv.defer(php_cgi_sock, s)
-    else
+    if Service.check_stop(0) then
       s:close()
+      return
     end
-    Processes[self] = nil
+
+    log.info('restarting php_cgi process')
+    uv.defer(php_cgi_sock, s)
   end)
 
   if process then Processes[process] = true end

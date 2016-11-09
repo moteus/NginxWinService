@@ -86,22 +86,26 @@ local function nginx_start(cfg)
     cwd  = NGINX_PATH,
     env  = env,
   }, function(self, err, code, signal)
+    Processes[self] = nil
 
-    log.info('process: %d stopped with code: %d sig: %d', pid, code, signal)
+    if err then
+      log.error("can not run process: %s", tostring(err))
+    else
+      log.info('process: %d stopped with code: %d sig: %d', pid, code, signal)
+    end
 
     if code ~= 0 then
       log.warning('unexpected terminate process: %d code: %d sig: %d', pid, code, signal)
     end
 
+    if Service.check_stop(0) then return end
+
     kill_childs(pid)
 
-    if not Service.check_stop(0) then
-      log.info('restarting nginx main process')
-      uv.timer():start(5000, function()
-        nginx_start(port)
-      end)
-    end
-    Processes[self] = nil
+    log.info('restarting nginx main process')
+    uv.timer():start(5000, function()
+      nginx_start(cfg)
+    end)
   end)
 
   if process then Processes[process] = true end
@@ -115,8 +119,12 @@ local function nginx_signal(sig)
     cwd  = NGINX_PATH,
     env  = env,
   }, function(self, err, code, signal)
-    log.info('nginx signal: %s code: %d signal: %d', sig, code, signal)
     Processes[self] = nil
+    if err then
+      log.error("can not send nginx signal: %s", tostring(err))
+    else
+      log.info('nginx signal: %s code: %d signal: %d', sig, code, signal)
+    end
   end)
 
   if process then Processes[process] = true end
