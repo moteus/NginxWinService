@@ -57,6 +57,21 @@ local PHP_ENV = {
 
   -- number of request before php-process will be restarted
   PHP_FCGI_MAX_REQUESTS="500";
+
+  -- backlog value for `listen` function
+  -- PHP_FCGI_BACKLOG = "128";
+
+  -- some PHP `constants`
+  PHP_BIN    = PHP_PATH .. [[\php.exe]];
+  PHP_BINARY = PHP_PATH .. [[\php.exe]];
+  PHPBIN     = PHP_PATH .. [[\php.exe]];
+
+  PHP_BINDIR = PHP_PATH .. [[\]];
+  PHP_DIR    = PHP_PATH .. [[\]];
+  PHPDIR     = PHP_PATH .. [[\]];
+
+  PHP_INI    = PHP_PATH .. [[\]] .. PHP_INI;
+  PHPRC      = PHP_PATH;
 }
 
 ----------------------------------------------------------------------------------------------
@@ -108,6 +123,8 @@ local stderrs = {}
 local function php_cgi_port(port)
   if Service.check_stop(0) then return end
 
+  local IGNORE = {flags = uv.IGNORE}
+
   log.info("starting php_cgi on port: %s ...", port)
 
   local stderr, stderr_started
@@ -124,7 +141,7 @@ local function php_cgi_port(port)
     file = PHP_PATH .. "\\" .. PHP_APP,
     args = {"-b", port, "-c", PHP_INI},
     cwd  = PHP_PATH,
-    stdio = {-1, -1, stderr or -1},
+    stdio = {IGNORE, IGNORE, stderr or IGNORE},
   }, function(self, err, code, signal)
     Processes[self] = nil
 
