@@ -189,6 +189,8 @@ local function php_cgi_sock(s)
     file = PHP_PATH .. "\\" .. PHP_APP,
     args = {"-c", PHP_INI},
     cwd  = PHP_PATH,
+    -- We have to pass invalid handles to stdout and stderr
+    -- so we can not capture stderr in this mode
     stdio = {s, -1, -1},
   }, function(self, err, code, signal)
     Processes[self] = nil
