@@ -1,8 +1,10 @@
 local Service = require "LuaService"
 local uv      = require "lluv"
+local path    = require "path"
 local env     = require "environ.process"
 local ut      = require "lluv.utils"
 local LogLib  = require "log"
+local J       = path.join
 
 ----------------------------------------------------------------------------------------------
 -- CONFIG BEGIN
@@ -23,7 +25,7 @@ local LOG_FILE  = {
 -- Works only for USE_SINGLE_PORT = false
 local PHP_LOG_STDERR = false
 
-local PHP_PATH  = Service.PATH .. "\\.."
+local PHP_PATH  = J(Service.PATH, "..")
 
 local PHP_APP   = "php-cgi.exe"
 
@@ -46,6 +48,8 @@ local PORTS = {
   '127.0.0.1:9004',
 }
 
+PHP_PATH = path.normalize(PHP_PATH)
+
 local PHP_ENV = {
   PATH=PHP_PATH..";%PATH%";
 
@@ -62,16 +66,16 @@ local PHP_ENV = {
   -- PHP_FCGI_BACKLOG = "128";
 
   -- some PHP `constants`
-  PHP_BIN    = PHP_PATH .. [[\php.exe]];
-  PHP_BINARY = PHP_PATH .. [[\php.exe]];
-  PHPBIN     = PHP_PATH .. [[\php.exe]];
+  PHP_BIN    = J(PHP_PATH, "php.exe");
+  PHP_BINARY = J(PHP_PATH, "php.exe");
+  PHPBIN     = J(PHP_PATH, "php.exe");
 
-  PHP_BINDIR = PHP_PATH .. [[\]];
-  PHP_DIR    = PHP_PATH .. [[\]];
-  PHPDIR     = PHP_PATH .. [[\]];
+  PHP_BINDIR = path.ensure_dir_end(PHP_PATH);
+  PHP_DIR    = path.ensure_dir_end(PHP_PATH);
+  PHPDIR     = path.ensure_dir_end(PHP_PATH);
 
-  PHP_INI    = PHP_PATH .. [[\]] .. PHP_INI;
-  PHPRC      = PHP_PATH;
+  PHP_INI    = J(PHP_PATH, PHP_INI);
+  PHPRC      = path.remove_dir_end(PHP_PATH);
 }
 
 ----------------------------------------------------------------------------------------------
@@ -96,7 +100,15 @@ local log do
   log = require "log".new( LOG_LEVEL or "info", writer, formatter)
 end
 
-for k, v in pairs(PHP_ENV) do env.setenv(k, v, true) end
+if not path.isfile(J(PHP_PATH, PHP_APP)) then
+  log.alert('can not find file: %s', J(PHP_PATH, PHP_APP))
+  return -1
+end
+
+for k, v in pairs(PHP_ENV) do
+  log.debug('setenv %s=%s', k, v)
+  env.setenv(k, v, true)
+end
 
 local function P(read, write, pipe)
   local ioflags = 0
@@ -138,7 +150,7 @@ local function php_cgi_port(port)
   local process, pid
 
   process, pid = uv.spawn({
-    file = PHP_PATH .. "\\" .. PHP_APP,
+    file = J(PHP_PATH, PHP_APP),
     args = {"-b", port, "-c", PHP_INI},
     cwd  = PHP_PATH,
     stdio = {IGNORE, IGNORE, stderr or IGNORE},
@@ -186,7 +198,7 @@ local function php_cgi_sock(s)
 
   local process, pid
   process, pid = uv.spawn({
-    file = PHP_PATH .. "\\" .. PHP_APP,
+    file = J(PHP_PATH, PHP_APP),
     args = {"-c", PHP_INI},
     cwd  = PHP_PATH,
     -- We have to pass invalid handles to stdout and stderr

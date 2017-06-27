@@ -8,6 +8,7 @@ local psapi   = require "pdh.psapi"
 local path    = require "path"
 local date    = require "date"
 local LogLib  = require "log"
+local J       = path.join
 
 ----------------------------------------------------------------------------------------------
 -- CONFIG BEGIN
@@ -24,7 +25,7 @@ local LOG_FILE  = {
   reuse          = true,
 }
 
-local NGINX_PATH = Service.PATH .. "\\.."
+local NGINX_PATH = J(Service.PATH, "..")
 
 local NGINX_APP  = "nginx.exe"
 
@@ -56,6 +57,13 @@ local log do
   log = require "log".new( LOG_LEVEL or "info", writer, formatter)
 end
 
+NGINX_PATH = path.normalize(NGINX_PATH)
+
+if not path.isfile(J(NGINX_PATH, NGINX_APP)) then
+  log.alert('can not find file: %s', J(NGINX_PATH, NGINX_APP))
+  return -1
+end
+
 local env = {} for k, v in pairs(ENV) do
   env[#env+1] = k..'='..v
 end
@@ -81,7 +89,7 @@ local function nginx_start(cfg)
   log.info("Start nginx with config: %s", cfg)
   local process, pid
   process, pid = uv.spawn({
-    file = NGINX_PATH .. "\\" .. NGINX_APP,
+    file = J(NGINX_PATH, NGINX_APP),
     args = {"-c", cfg},
     cwd  = NGINX_PATH,
     env  = env,
@@ -114,7 +122,7 @@ end
 local function nginx_signal(sig)
   log.info('send nginx signal: %s', sig)
   local process = uv.spawn({
-    file = NGINX_PATH .. "\\" .. NGINX_APP,
+    file = J(NGINX_PATH, NGINX_APP),
     args = {"-s", sig},
     cwd  = NGINX_PATH,
     env  = env,
@@ -136,14 +144,14 @@ end
 
 local function rename_log(P)
   local p, b = path.split(P)
-  local new = path.join(p, path.splitext(b) .. '.' .. date():fmt('%F_%H%M%S') .. '.log')
+  local new = J(p, path.splitext(b) .. '.' .. date():fmt('%F_%H%M%S') .. '.log')
   local ok, err = path.rename(P, new)
   log.info("rename `%s` to `%s` : %s", P, new, ok and 'ok' or tostring(err))
 end
 
 local function nginx_rotate()
-  path.each(path.join(NGINX_PATH, 'logs', '*access.log'), rename_log)
-  path.each(path.join(NGINX_PATH, 'logs', '*error.log'), rename_log)
+  path.each(J(NGINX_PATH, 'logs', '*access.log'), rename_log)
+  path.each(J(NGINX_PATH, 'logs', '*error.log'), rename_log)
   return nginx_signal('reopen')
 end
 
